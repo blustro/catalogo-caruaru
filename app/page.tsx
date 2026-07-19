@@ -12,8 +12,8 @@ export default async function Page() {
   }`);
 
   return (
-    <main className='max-w-7xl mx-auto px-4 py-12 bg-gray-50 min-h-screen'>
-      <header className='mb-12 text-center'>
+    <main className='w-full max-w-7xl mx-auto px-2 md:px-4 py-6 md:py-12 bg-gray-50 min-h-screen'>
+      <header className='md:mb-12 text-center'>
         <h1 className='text-4xl font-extrabold text-gray-900 mb-2'>
           Catálogo de Materiais
         </h1>
@@ -21,7 +21,6 @@ export default async function Page() {
           Busque e encontre o que precisa para sua obra.
         </p>
       </header>
-
       <ProductList products={products} />
     </main>
   );

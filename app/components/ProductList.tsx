@@ -4,6 +4,7 @@
 import Image from 'next/image';
 import { useState, useEffect, useRef, useTransition, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { PortableText } from '@portabletext/react';
 import {
   Filter,
   Search,
@@ -14,6 +15,7 @@ import {
   MessageCircle,
   Eye,
   X,
+  Sparkles,
 } from 'lucide-react';
 
 // Importação da Server Action
@@ -43,7 +45,6 @@ const CATEGORY_MAP: Record<string, string[]> = {
 
 export default function ProductList({
   initialProducts = [],
-  categories,
 }: {
   initialProducts?: any[];
   categories?: any[];
@@ -51,7 +52,7 @@ export default function ProductList({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   // 1. Ler os filtros diretamente da URL (Fonte Única da Verdade)
   const currentCategory = searchParams.get('category') || 'Todos';
@@ -68,6 +69,7 @@ export default function ProductList({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
 
   // Estado local para o input de busca (evita travamento de digitação)
   const [searchInput, setSearchInput] = useState(currentSearch);
@@ -212,14 +214,23 @@ export default function ProductList({
 
   const getWhatsAppUrl = (product: any) => {
     const phone = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '5511962436235';
+    const finalPrice =
+      product.isOnSale && product.promotionalPrice
+        ? product.promotionalPrice
+        : product.price;
     const text = encodeURIComponent(
       `Olá! Gostaria de mais informações sobre o produto:\n\n` +
         `*${product.title}*\n` +
+        (finalPrice ? `Preço: R$ ${finalPrice.toFixed(2)}\n` : '') +
+        (selectedSize ? `Tamanho selecionado: ${selectedSize}\n` : '') +
         `Categoria: ${product.category}${product.subcategory ? ` > ${product.subcategory}` : ''}\n` +
         `Código: ${product._id}`,
     );
     return `https://wa.me/${phone}?text=${text}`;
   };
+
+  // Filtra dinamicamente os produtos em destaque direto da listagem carregada
+  const featuredProducts = products.filter((p) => p.isFeatured);
 
   return (
     <div className='w-full overflow-x-hidden flex flex-col min-h-screen bg-gray-50 font-sans text-slate-900'>
@@ -230,9 +241,80 @@ export default function ProductList({
         </div>
       )}
 
+      {/* Seção de Produtos em Destaque (Carrossel Horizontal / Grid Compacto no Topo) */}
+      {!isInitialLoading &&
+        featuredProducts.length > 0 &&
+        currentCategory === 'Todos' &&
+        !currentSearch && (
+          <div className='w-full bg-slate-100/80 border-b border-gray-200 py-6 px-4 mb-6'>
+            <div className='max-w-7xl mx-auto'>
+              <div className='flex items-center gap-2 mb-4'>
+                <Sparkles className='w-5 h-5 text-amber-500 fill-amber-500' />
+                <h2 className='text-base font-black text-slate-900 uppercase tracking-wider'>
+                  Produtos em Destaque
+                </h2>
+              </div>
+
+              <div className='flex gap-4 overflow-x-auto pb-2 scrollbar-none'>
+                {featuredProducts.map((product) => (
+                  <div
+                    key={`featured-${product._id}`}
+                    onClick={() => {
+                      setSelectedProduct(product);
+                      setSelectedSize(product.sizes?.[0] || null);
+                    }}
+                    className='min-w-50 max-w-50 bg-white rounded-xl p-3 shadow-sm border border-gray-200 flex flex-col hover:shadow-md transition-all cursor-pointer group shrink-0 relative'
+                  >
+                    <span className='absolute top-3 left-3 z-10 bg-amber-500 text-white font-bold text-[9px] px-1.5 py-0.5 rounded shadow'>
+                      Destaque
+                    </span>
+
+                    <div className='h-28 bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden relative'>
+                      {product.imageUrl ? (
+                        <Image
+                          src={product.imageUrl}
+                          alt={product.title}
+                          fill
+                          unoptimized={product.imageUrl.includes(
+                            'placehold.co',
+                          )}
+                          className='object-cover group-hover:scale-105 transition-transform duration-300'
+                        />
+                      ) : (
+                        <span className='text-gray-400 text-xs font-medium'>
+                          Sem foto
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className='text-xs font-bold text-gray-900 line-clamp-2 mb-2 leading-snug'>
+                      {product.title}
+                    </h3>
+
+                    <div className='mt-auto flex items-center gap-1.5'>
+                      {product.isOnSale && product.promotionalPrice ? (
+                        <span className='font-bold text-red-600 text-xs'>
+                          R$ {product.promotionalPrice?.toFixed(2)}
+                        </span>
+                      ) : product.price ? (
+                        <span className='font-bold text-gray-900 text-xs'>
+                          R$ {product.price?.toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className='text-[10px] text-gray-500 font-medium'>
+                          Sob consulta
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
       {/* Header Fixo de Controles */}
       <div className='sticky top-0 bg-white/95 backdrop-blur-md p-4 mb-6 border-b z-10 flex flex-col gap-4 shadow-sm'>
-        {/* Linha Topo: Título + Botão Drawer de Filtros */}
         <div className='flex items-center justify-between'>
           <div>
             <h1 className='text-xl font-black tracking-tight text-slate-800'>
@@ -267,7 +349,6 @@ export default function ProductList({
                 </SheetTitle>
               </SheetHeader>
 
-              {/* Lista de Categorias Principais */}
               <div className='flex flex-col gap-3'>
                 <label className='text-xs font-bold uppercase tracking-wider text-gray-400'>
                   Categorias Principais
@@ -293,7 +374,6 @@ export default function ProductList({
                         )}
                       </button>
 
-                      {/* Subcategorias Dinâmicas */}
                       {currentCategory === cat &&
                         CATEGORY_MAP[cat].length > 0 && (
                           <div className='ml-4 pl-3 border-l-2 border-slate-200 flex flex-col gap-1.5 my-2'>
@@ -373,13 +453,15 @@ export default function ProductList({
               <option value='default'>Ordenação Padrão</option>
               <option value='name-asc'>Nome (A - Z)</option>
               <option value='name-desc'>Nome (Z - A)</option>
+              <option value='price-asc'>Preço (Menor para Maior)</option>
+              <option value='price-desc'>Preço (Maior para Menor)</option>
             </select>
             <ChevronDown className='absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none' />
           </div>
         </div>
       </div>
 
-      {/* Grid de Produtos */}
+      {/* Grid Principal de Produtos */}
       <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 auto-rows-fr px-4'>
         {isInitialLoading ? (
           Array.from({ length: 8 }).map((_, i) => (
@@ -406,9 +488,19 @@ export default function ProductList({
           products.map((product) => (
             <div
               key={product._id}
-              onClick={() => setSelectedProduct(product)}
-              className='bg-white rounded-xl p-3 shadow-sm border border-gray-200 flex flex-col hover:shadow-md transition-all cursor-pointer group'
+              onClick={() => {
+                setSelectedProduct(product);
+                setSelectedSize(product.sizes?.[0] || null);
+              }}
+              className='bg-white rounded-xl p-3 shadow-sm border border-gray-200 flex flex-col hover:shadow-md transition-all cursor-pointer group relative'
             >
+              {/* Badge de Oferta / Destaque */}
+              {product.isOnSale && product.saleBadgeText && (
+                <span className='absolute top-5 left-5 z-10 bg-red-600 text-white font-bold text-[10px] px-2 py-0.5 rounded shadow'>
+                  {product.saleBadgeText}
+                </span>
+              )}
+
               {/* Imagem do Produto */}
               <div className='h-40 bg-gray-100 rounded-lg mb-3 flex items-center justify-center overflow-hidden relative'>
                 {product.imageUrl ? (
@@ -439,9 +531,31 @@ export default function ProductList({
               </div>
 
               {/* Título do Produto */}
-              <h2 className='text-sm font-bold text-gray-900 mt-1 line-clamp-2 mb-3 leading-snug group-hover:text-slate-700'>
+              <h2 className='text-sm font-bold text-gray-900 mt-1 line-clamp-2 mb-2 leading-snug group-hover:text-slate-700'>
                 {product.title}
               </h2>
+
+              {/* Exibição de Preços */}
+              <div className='mb-3 flex items-center gap-2 flex-wrap'>
+                {product.isOnSale && product.promotionalPrice ? (
+                  <>
+                    <span className='text-xs text-gray-400 line-through'>
+                      R$ {product.price?.toFixed(2)}
+                    </span>
+                    <span className='font-bold text-red-600 text-sm'>
+                      R$ {product.promotionalPrice?.toFixed(2)}
+                    </span>
+                  </>
+                ) : product.price ? (
+                  <span className='font-bold text-gray-900 text-sm'>
+                    R$ {product.price?.toFixed(2)}
+                  </span>
+                ) : (
+                  <span className='text-xs text-gray-500 font-medium'>
+                    Sob consulta
+                  </span>
+                )}
+              </div>
 
               {/* Botão de Ação Rápida */}
               <button className='w-full text-center bg-slate-100 text-slate-800 font-semibold py-2.5 text-xs rounded-lg mt-auto group-hover:bg-slate-200 transition-colors flex items-center justify-center gap-1.5'>
@@ -456,15 +570,20 @@ export default function ProductList({
       {/* Drawer / Modal de Detalhes do Produto (Bottom Sheet) */}
       <Sheet
         open={!!selectedProduct}
-        onOpenChange={(open) => !open && setSelectedProduct(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedProduct(null);
+            setSelectedSize(null);
+          }
+        }}
       >
         <SheetContent
           side='bottom'
-          className='h-[85vh] sm:h-150 rounded-t-2xl p-0 font-sans overflow-y-auto'
+          className='h-[85vh] sm:h-[80vh] rounded-t-2xl p-0 font-sans overflow-y-auto'
         >
           {selectedProduct && (
             <div className='flex flex-col h-full max-w-2xl mx-auto'>
-              <div className='relative w-full h-64 sm:h-80 bg-gray-100'>
+              <div className='relative w-full h-64 sm:h-80 bg-gray-100 shrink-0'>
                 {selectedProduct.imageUrl ? (
                   <Image
                     src={selectedProduct.imageUrl}
@@ -498,16 +617,78 @@ export default function ProductList({
                   {selectedProduct.title}
                 </h2>
 
+                {/* Preços no Sheet */}
+                <div className='flex items-center gap-3'>
+                  {selectedProduct.isOnSale &&
+                  selectedProduct.promotionalPrice ? (
+                    <>
+                      <span className='text-sm text-gray-400 line-through'>
+                        R$ {selectedProduct.price?.toFixed(2)}
+                      </span>
+                      <span className='text-2xl font-black text-red-600'>
+                        R$ {selectedProduct.promotionalPrice?.toFixed(2)}
+                      </span>
+                      {selectedProduct.saleBadgeText && (
+                        <span className='bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded font-bold'>
+                          {selectedProduct.saleBadgeText}
+                        </span>
+                      )}
+                    </>
+                  ) : selectedProduct.price ? (
+                    <span className='text-2xl font-black text-slate-900'>
+                      R$ {selectedProduct.price?.toFixed(2)}
+                    </span>
+                  ) : (
+                    <span className='text-sm font-semibold text-slate-600'>
+                      Preço sob consulta
+                    </span>
+                  )}
+                </div>
+
+                {/* Seção de Tamanhos */}
+                {selectedProduct.sizes && selectedProduct.sizes.length > 0 && (
+                  <div>
+                    <span className='text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2'>
+                      Tamanho / Modelo:
+                    </span>
+                    <div className='flex gap-2 flex-wrap'>
+                      {selectedProduct.sizes.map((size: string) => (
+                        <button
+                          key={size}
+                          onClick={() => setSelectedSize(size)}
+                          className={`border rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
+                            selectedSize === size
+                              ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                              : 'border-gray-200 text-gray-700 hover:border-gray-400 bg-white'
+                          }`}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Descrição Rica (Portable Text) */}
+                {selectedProduct.description && (
+                  <div className='text-sm text-gray-600 space-y-2 border-t pt-4 border-gray-100'>
+                    <span className='font-bold text-xs uppercase tracking-wider text-gray-400 block'>
+                      Descrição do Produto
+                    </span>
+                    <div className='prose prose-sm max-w-none text-slate-700'>
+                      <PortableText value={selectedProduct.description} />
+                    </div>
+                  </div>
+                )}
+
                 <div className='bg-slate-50 border border-slate-100 p-4 rounded-xl text-xs text-slate-600 space-y-1.5'>
                   <p>
-                    <strong className='text-slate-800'>
-                      Código do Produto:
-                    </strong>{' '}
+                    <strong className='text-slate-800'>Código:</strong>{' '}
                     {selectedProduct._id}
                   </p>
                   <p>
-                    <strong className='text-slate-800'>Disponibilidade:</strong>{' '}
-                    Sob consulta via WhatsApp
+                    <strong className='text-slate-800'>Atendimento:</strong>{' '}
+                    Rápido via WhatsApp
                   </p>
                 </div>
 

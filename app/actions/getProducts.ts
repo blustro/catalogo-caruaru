@@ -49,14 +49,24 @@ export async function fetchProducts({
   let order = '';
   if (sortBy === 'name-asc') order = '| order(title asc)';
   if (sortBy === 'name-desc') order = '| order(title desc)';
+  if (sortBy === 'price-asc') order = '| order(price asc)'; // Opcional: ordenar por preço
+  if (sortBy === 'price-desc') order = '| order(price desc)'; // Opcional: ordenar por preço
 
-  // Consulta paginada de produtos
+  // Consulta paginada de produtos atualizada com os novos campos
   const query = `*[${filter}] ${order} [${start}...${end}] {
     _id,
     title,
+    "slug": slug.current,
     category,
     subcategory,
-    imageUrl
+    price,
+    isOnSale,
+    promotionalPrice,
+    saleBadgeText,
+    sizes,
+    "imageUrl": images[0].asset->url,
+    description,
+    isFeatured
   }`;
 
   // Consulta para total de itens (usado para saber se a lista acabou)

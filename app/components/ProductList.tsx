@@ -2,7 +2,8 @@
 'use client';
 
 import Image from 'next/image';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useTransition, useCallback } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import {
   Filter,
   Search,
@@ -10,9 +11,12 @@ import {
   Check,
   Loader2,
   ChevronRight,
+  MessageCircle,
+  Eye,
+  X,
 } from 'lucide-react';
 
-// Importação da Server Action que criamos
+// Importação da Server Action
 import { fetchProducts } from '@/app/actions/getProducts';
 
 // Componentes do Shadcn
@@ -37,34 +41,85 @@ const CATEGORY_MAP: Record<string, string[]> = {
   Jardinagem: ['Vasos', 'Sementes', 'Equipamentos', 'Adubos'],
 };
 
-export default function ProductList() {
+export default function ProductList({
+  initialProducts = [],
+  categories,
+}: {
+  initialProducts?: any[];
+  categories?: any[];
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
+
+  // 1. Ler os filtros diretamente da URL (Fonte Única da Verdade)
+  const currentCategory = searchParams.get('category') || 'Todos';
+  const currentSubcategory = searchParams.get('sub') || 'Todas';
+  const currentSearch = searchParams.get('q') || '';
+  const currentSort = searchParams.get('sort') || 'default';
+
   // Estados para dados e paginação
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>(initialProducts);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-
-  // Estados dos Filtros
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Todos');
-  const [selectedSubcategory, setSelectedSubcategory] = useState('Todas');
-  const [sortBy, setSortBy] = useState('default');
+  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
+  // Estado local para o input de busca (evita travamento de digitação)
+  const [searchInput, setSearchInput] = useState(currentSearch);
+  const [prevCurrentSearch, setPrevCurrentSearch] = useState(currentSearch);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // 1. Debounce para a Busca (Evita disparar requisições a cada tecla)
+  // Sincroniza o input durante a renderização se a URL mudar externamente (ex: botão voltar/limpar)
+  if (currentSearch !== prevCurrentSearch) {
+    setPrevCurrentSearch(currentSearch);
+    setSearchInput(currentSearch);
+  }
+
+  // Função centralizada para atualizar a URL otimizada com useCallback
+  const updateFilter = useCallback(
+    (key: string, value: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+
+      if (
+        value &&
+        value !== 'Todos' &&
+        value !== 'Todas desta categoria' &&
+        value !== 'all' &&
+        value !== 'default'
+      ) {
+        params.set(key, value);
+      } else {
+        params.delete(key);
+      }
+
+      // Se mudar a categoria principal, limpa a subcategoria
+      if (key === 'category') {
+        params.delete('sub');
+      }
+
+      startTransition(() => {
+        router.push(`${pathname}?${params.toString()}`, { scroll: false });
+      });
+    },
+    [searchParams, pathname, router, startTransition],
+  );
+
+  // Debounce para a Busca na URL
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedSearch(search);
+      if (searchInput !== currentSearch) {
+        updateFilter('q', searchInput);
+      }
     }, 400);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [currentSearch, searchInput, updateFilter]);
 
-  // 2. Busca de dados inicial / quando os filtros mudam (Sem disparar setState síncrono no topo)
+  // 2. Busca de dados sempre que os parâmetros da URL mudarem
   useEffect(() => {
     let isCancelled = false;
 
@@ -74,10 +129,10 @@ export default function ProductList() {
 
       try {
         const result = await fetchProducts({
-          category: selectedCategory,
-          subcategory: selectedSubcategory,
-          search: debouncedSearch,
-          sortBy: sortBy,
+          category: currentCategory,
+          subcategory: currentSubcategory,
+          search: currentSearch,
+          sortBy: currentSort,
           page: 0,
           pageSize: 12,
         });
@@ -98,13 +153,12 @@ export default function ProductList() {
 
     loadData();
 
-    // Cleanup caso o usuário mude os filtros muito rápido
     return () => {
       isCancelled = true;
     };
-  }, [selectedCategory, selectedSubcategory, debouncedSearch, sortBy]);
+  }, [currentCategory, currentSubcategory, currentSearch, currentSort]);
 
-  // Observer de Rolagem para carregar a próxima página (Infinite Scroll / Lazy Loading)
+  // Observer de Rolagem para Infinite Scroll
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
@@ -122,10 +176,10 @@ export default function ProductList() {
 
           try {
             const result = await fetchProducts({
-              category: selectedCategory,
-              subcategory: selectedSubcategory,
-              search: debouncedSearch,
-              sortBy: sortBy,
+              category: currentCategory,
+              subcategory: currentSubcategory,
+              search: currentSearch,
+              sortBy: currentSort,
               page: nextPage,
               pageSize: 12,
             });
@@ -150,16 +204,21 @@ export default function ProductList() {
     isLoadingMore,
     isInitialLoading,
     page,
-    selectedCategory,
-    selectedSubcategory,
-    debouncedSearch,
-    sortBy,
+    currentCategory,
+    currentSubcategory,
+    currentSearch,
+    currentSort,
   ]);
 
-  // Handler ao mudar de categoria principal no menu
-  const handleCategorySelect = (category: string) => {
-    setSelectedCategory(category);
-    setSelectedSubcategory('Todas'); // Reseta a subcategoria ao trocar de categoria principal
+  const getWhatsAppUrl = (product: any) => {
+    const phone = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '5511962436235';
+    const text = encodeURIComponent(
+      `Olá! Gostaria de mais informações sobre o produto:\n\n` +
+        `*${product.title}*\n` +
+        `Categoria: ${product.category}${product.subcategory ? ` > ${product.subcategory}` : ''}\n` +
+        `Código: ${product._id}`,
+    );
+    return `https://wa.me/${phone}?text=${text}`;
   };
 
   return (
@@ -193,9 +252,7 @@ export default function ProductList() {
                   className='flex items-center gap-2 font-medium bg-white'
                 >
                   <Filter className='w-4 h-4' />
-                  {selectedCategory === 'Todos'
-                    ? 'Categorias'
-                    : selectedCategory}
+                  {currentCategory === 'Todos' ? 'Categorias' : currentCategory}
                 </Button>
               }
             ></SheetTrigger>
@@ -219,15 +276,15 @@ export default function ProductList() {
                   {Object.keys(CATEGORY_MAP).map((cat) => (
                     <div key={cat} className='flex flex-col gap-1'>
                       <button
-                        onClick={() => handleCategorySelect(cat)}
+                        onClick={() => updateFilter('category', cat)}
                         className={`flex items-center justify-between w-full px-4 py-3.5 rounded-xl text-sm text-left font-semibold transition-all ${
-                          selectedCategory === cat
+                          currentCategory === cat
                             ? 'bg-slate-900 text-white shadow-md'
                             : 'text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-100'
                         }`}
                       >
                         <span className='flex items-center gap-2'>{cat}</span>
-                        {selectedCategory === cat ? (
+                        {currentCategory === cat ? (
                           <Check className='w-4 h-4 text-white' />
                         ) : (
                           CATEGORY_MAP[cat].length > 0 && (
@@ -236,17 +293,17 @@ export default function ProductList() {
                         )}
                       </button>
 
-                      {/* Subcategorias Dinâmicas (Aparecem quando a Categoria está Selecionada) */}
-                      {selectedCategory === cat &&
+                      {/* Subcategorias Dinâmicas */}
+                      {currentCategory === cat &&
                         CATEGORY_MAP[cat].length > 0 && (
                           <div className='ml-4 pl-3 border-l-2 border-slate-200 flex flex-col gap-1.5 my-2'>
                             <label className='text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1'>
                               Subcategorias
                             </label>
                             <button
-                              onClick={() => setSelectedSubcategory('Todas')}
+                              onClick={() => updateFilter('sub', 'Todas')}
                               className={`text-xs text-left px-3 py-2 rounded-lg transition-colors ${
-                                selectedSubcategory === 'Todas'
+                                currentSubcategory === 'Todas'
                                   ? 'bg-slate-200 text-slate-900 font-bold'
                                   : 'text-gray-600 hover:bg-gray-100'
                               }`}
@@ -256,15 +313,15 @@ export default function ProductList() {
                             {CATEGORY_MAP[cat].map((sub) => (
                               <button
                                 key={sub}
-                                onClick={() => setSelectedSubcategory(sub)}
+                                onClick={() => updateFilter('sub', sub)}
                                 className={`text-xs text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${
-                                  selectedSubcategory === sub
+                                  currentSubcategory === sub
                                     ? 'bg-slate-200 text-slate-900 font-bold'
                                     : 'text-gray-600 hover:bg-gray-100'
                                 }`}
                               >
                                 <span>{sub}</span>
-                                {selectedSubcategory === sub && (
+                                {currentSubcategory === sub && (
                                   <Check className='w-3.5 h-3.5 text-slate-900' />
                                 )}
                               </button>
@@ -293,17 +350,25 @@ export default function ProductList() {
             <input
               type='text'
               placeholder='O que você procura?'
-              value={search}
-              className='w-full pl-11 p-3.5 rounded-xl border border-gray-300 shadow-sm outline-none focus:ring-2 focus:ring-slate-800 text-gray-900 placeholder:text-gray-500 font-medium'
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className='w-full pl-11 pr-10 p-3.5 rounded-xl border border-gray-300 shadow-sm outline-none focus:ring-2 focus:ring-slate-800 text-gray-900 placeholder:text-gray-500 font-medium'
             />
+            {searchInput && (
+              <button
+                onClick={() => setSearchInput('')}
+                className='absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'
+              >
+                <X className='w-4 h-4' />
+              </button>
+            )}
           </div>
 
           <div className='relative w-full'>
             <select
-              value={sortBy}
+              value={currentSort}
+              onChange={(e) => updateFilter('sort', e.target.value)}
               className='w-full p-3.5 rounded-xl border border-gray-300 bg-white shadow-sm outline-none appearance-none pr-11 text-gray-900 font-medium'
-              onChange={(e) => setSortBy(e.target.value)}
             >
               <option value='default'>Ordenação Padrão</option>
               <option value='name-asc'>Nome (A - Z)</option>
@@ -315,8 +380,7 @@ export default function ProductList() {
       </div>
 
       {/* Grid de Produtos */}
-      <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 auto-rows-fr'>
-        {/* State 1: Carregamento Inicial (Skeletons) */}
+      <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 auto-rows-fr px-4'>
         {isInitialLoading ? (
           Array.from({ length: 8 }).map((_, i) => (
             <div
@@ -330,7 +394,6 @@ export default function ProductList() {
             </div>
           ))
         ) : products.length === 0 ? (
-          /* State 2: Lista Vazia */
           <div className='col-span-full text-center py-16 flex flex-col items-center justify-center'>
             <p className='text-gray-500 text-base font-semibold'>
               Nenhum produto encontrado.
@@ -340,19 +403,21 @@ export default function ProductList() {
             </p>
           </div>
         ) : (
-          /* State 3: Renderização dos Produtos */
           products.map((product) => (
             <div
               key={product._id}
-              className='bg-white rounded-xl p-3 shadow-sm border border-gray-200 flex flex-col hover:shadow-md transition-shadow'
+              onClick={() => setSelectedProduct(product)}
+              className='bg-white rounded-xl p-3 shadow-sm border border-gray-200 flex flex-col hover:shadow-md transition-all cursor-pointer group'
             >
+              {/* Imagem do Produto */}
               <div className='h-40 bg-gray-100 rounded-lg mb-3 flex items-center justify-center overflow-hidden relative'>
                 {product.imageUrl ? (
                   <Image
                     src={product.imageUrl}
                     alt={product.title}
                     fill
-                    className='object-cover'
+                    unoptimized={product.imageUrl.includes('placehold.co')}
+                    className='object-cover group-hover:scale-105 transition-transform duration-300'
                   />
                 ) : (
                   <span className='text-gray-400 text-xs font-medium'>
@@ -361,7 +426,7 @@ export default function ProductList() {
                 )}
               </div>
 
-              {/* Badges de Categoria e Subcategoria */}
+              {/* Badges de Categoria / Subcategoria */}
               <div className='flex items-center gap-1.5 flex-wrap mb-1'>
                 <span className='text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded'>
                   {product.category}
@@ -373,24 +438,97 @@ export default function ProductList() {
                 )}
               </div>
 
-              <h2 className='text-sm font-bold text-gray-900 mt-1 line-clamp-3 mb-4 leading-snug'>
+              {/* Título do Produto */}
+              <h2 className='text-sm font-bold text-gray-900 mt-1 line-clamp-2 mb-3 leading-snug group-hover:text-slate-700'>
                 {product.title}
               </h2>
 
-              <a
-                href={`https://wa.me/5500999999999?text=Tenho interesse em: ${product.title}`}
-                target='_blank'
-                rel='noopener noreferrer'
-                className='block w-full text-center bg-emerald-600 text-white font-bold py-3 text-sm rounded-lg mt-auto hover:bg-emerald-700 transition-colors shadow-sm'
-              >
-                Consultar
-              </a>
+              {/* Botão de Ação Rápida */}
+              <button className='w-full text-center bg-slate-100 text-slate-800 font-semibold py-2.5 text-xs rounded-lg mt-auto group-hover:bg-slate-200 transition-colors flex items-center justify-center gap-1.5'>
+                <Eye className='w-3.5 h-3.5' />
+                Ver Detalhes
+              </button>
             </div>
           ))
         )}
       </div>
 
-      {/* Sentinela de Rolagem + Spinner de Carregamento para Próximas Páginas */}
+      {/* Drawer / Modal de Detalhes do Produto (Bottom Sheet) */}
+      <Sheet
+        open={!!selectedProduct}
+        onOpenChange={(open) => !open && setSelectedProduct(null)}
+      >
+        <SheetContent
+          side='bottom'
+          className='h-[85vh] sm:h-150 rounded-t-2xl p-0 font-sans overflow-y-auto'
+        >
+          {selectedProduct && (
+            <div className='flex flex-col h-full max-w-2xl mx-auto'>
+              <div className='relative w-full h-64 sm:h-80 bg-gray-100'>
+                {selectedProduct.imageUrl ? (
+                  <Image
+                    src={selectedProduct.imageUrl}
+                    alt={selectedProduct.title}
+                    fill
+                    unoptimized={selectedProduct.imageUrl.includes(
+                      'placehold.co',
+                    )}
+                    className='object-contain p-4'
+                  />
+                ) : (
+                  <div className='w-full h-full flex items-center justify-center text-gray-400'>
+                    Sem foto disponível
+                  </div>
+                )}
+              </div>
+
+              <div className='p-6 flex flex-col flex-1 gap-4'>
+                <div className='flex items-center gap-2'>
+                  <span className='text-xs font-bold uppercase tracking-wider text-slate-600 bg-slate-100 px-2 py-1 rounded'>
+                    {selectedProduct.category}
+                  </span>
+                  {selectedProduct.subcategory && (
+                    <span className='text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded'>
+                      {selectedProduct.subcategory}
+                    </span>
+                  )}
+                </div>
+
+                <h2 className='text-xl font-black text-slate-900 leading-tight'>
+                  {selectedProduct.title}
+                </h2>
+
+                <div className='bg-slate-50 border border-slate-100 p-4 rounded-xl text-xs text-slate-600 space-y-1.5'>
+                  <p>
+                    <strong className='text-slate-800'>
+                      Código do Produto:
+                    </strong>{' '}
+                    {selectedProduct._id}
+                  </p>
+                  <p>
+                    <strong className='text-slate-800'>Disponibilidade:</strong>{' '}
+                    Sob consulta via WhatsApp
+                  </p>
+                </div>
+
+                <div className='mt-auto pt-4'>
+                  <a
+                    href={getWhatsAppUrl(selectedProduct)}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    className='w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 text-base shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.99]'
+                  >
+                    <MessageCircle className='w-5 h-5 fill-current' />
+                    Solicitar Orçamento no WhatsApp
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Sentinela de Rolagem */}
       <div ref={sentinelRef} className='py-8 flex justify-center items-center'>
         {isLoadingMore && (
           <div className='flex items-center gap-2 text-slate-600 font-medium text-sm'>

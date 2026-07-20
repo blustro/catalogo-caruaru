@@ -156,7 +156,7 @@ export default function ProductList({ products }: { products: any[] }) {
       </div>
 
       {/* Grid de Produtos */}
-      <div className='grid grid-cols-2 lg:grid-cols-4 gap-4 px-4 flex-1 max-w-7xl mx-auto w-full'>
+      <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 auto-rows-fr'>
         {filteredProducts.slice(0, limit).map((product) => (
           <div
             key={product._id}

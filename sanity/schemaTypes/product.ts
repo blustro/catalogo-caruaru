@@ -1,48 +1,31 @@
-import { defineType } from 'sanity';
+import { defineField, defineType } from 'sanity';
 
-const product = defineType({
+export const product = defineType({
   name: 'product',
-  type: 'document',
   title: 'Produto',
+  type: 'document',
   fields: [
-    {
+    defineField({
       name: 'title',
-      type: 'string',
       title: 'Nome do Produto',
-    },
-    {
-      name: 'category',
       type: 'string',
+      validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: 'category',
       title: 'Categoria',
-    },
-    {
-      name: 'price',
-      type: 'number',
-      title: 'Preço',
-    },
-    {
-      name: 'description',
-      type: 'text',
-      title: 'Descrição',
-    },
-    {
-      name: 'image',
-      type: 'image',
-      title: 'Imagem',
-      options: { hotspot: true },
-    },
-    {
-      name: 'slug',
-      type: 'slug',
-      title: 'Slug',
-      options: { source: 'title' },
-    },
-    {
-      name: 'inStock',
-      type: 'boolean',
-      title: 'Em Estoque',
-    },
+      type: 'string',
+      validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: 'subcategory',
+      title: 'Subcategoria',
+      type: 'string',
+    }),
+    defineField({
+      name: 'imageUrl',
+      title: 'URL da Imagem',
+      type: 'url',
+    }),
   ],
 });
-
-export default product;

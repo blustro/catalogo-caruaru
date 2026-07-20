@@ -552,7 +552,8 @@ export default function ProductList({
             <span className='bg-gray-100 px-3 py-1 rounded-full'>💠 Pix</span>
           </div>
           <p className='text-xs text-gray-400 mt-6 font-medium'>
-            © 2026 Nome da Empresa. Rua Exemplo, 123, Centro - Cidade/UF.
+            © 2026 Depósito Caruar. Avenida Utinga, 123, Santa Terezinha - Santo
+            André/SP.
           </p>
         </div>
       </footer>
